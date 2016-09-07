@@ -1,6 +1,6 @@
 # ################################################################
-# LZ4 library - Makefile
-# Copyright (C) Yann Collet 2011-2014
+# LZ4 - Makefile
+# Copyright (C) Yann Collet 2011-2015
 # All rights reserved.
 # 
 # BSD license
@@ -26,96 +26,107 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # 
 # You can contact the author at :
-#  - LZ4 source repository : http://code.google.com/p/lz4/
+#  - LZ4 source repository : https://github.com/Cyan4973/lz4
 #  - LZ4 forum froup : https://groups.google.com/forum/#!forum/lz4c
 # ################################################################
 
-RELEASE=r112
-DESTDIR=
-PREFIX=/usr
-CC=gcc
-CFLAGS+= -I. -std=c99 -Wall -W -Wundef -DLZ4_VERSION=\"$(RELEASE)\"
+# Version number
+export VERSION=131
+export RELEASE=r$(VERSION)
 
-LIBDIR=$(PREFIX)/lib
+DESTDIR?=
+PREFIX ?= /usr/local
+
+LIBDIR ?= $(PREFIX)/lib
 INCLUDEDIR=$(PREFIX)/include
-PRGDIR=programs
-DISTRIBNAME=lz4-$(RELEASE).tar.gz
+PRGDIR  = programs
+LZ4DIR  = lib
 
 
-# Define *.exe as extension for Windows systems
-ifneq (,$(filter Windows%,$(OS)))
-EXT =.exe
+# Select test target for Travis CI's Build Matrix
+ifneq (,$(filter test-%,$(LZ4_TRAVIS_CI_ENV)))
+TRAVIS_TARGET=prg-travis
 else
-EXT =
+TRAVIS_TARGET=$(LZ4_TRAVIS_CI_ENV)
 endif
 
-TEXT = lz4.c lz4.h lz4hc.c lz4hc.h \
-	lz4_format_description.txt Makefile NEWS LICENSE \
-	cmake_unofficial/CMakeLists.txt \
-	$(PRGDIR)/fullbench.c $(PRGDIR)/fuzzer.c $(PRGDIR)/lz4cli.c \
-	$(PRGDIR)/bench.c $(PRGDIR)/bench.h \
-	$(PRGDIR)/xxhash.c $(PRGDIR)/xxhash.h \
-	$(PRGDIR)/lz4.1 $(PRGDIR)/Makefile $(PRGDIR)/COPYING
-NONTEXT = LZ4_Streaming_Format.odt
-SOURCES = $(TEXT) $(NONTEXT)
+# Define nul output
+ifneq (,$(filter Windows%,$(OS)))
+VOID = nul
+else
+VOID = /dev/null
+endif
 
 
-default: liblz4
-	@cd $(PRGDIR); make
+.PHONY: default all lib lz4programs clean test versionsTest
 
-all: liblz4 lz4programs
+default: lz4programs
 
-liblz4: liblz4.a liblz4.so
+all: lib
+	@cd $(PRGDIR); $(MAKE) -e all
 
-lz4programs: lz4.c lz4hc.c
-	@cd $(PRGDIR); make all
+lib:
+	@cd $(LZ4DIR); $(MAKE) -e all
 
-liblz4.a: lz4.c lz4hc.c
-	$(CC) -O3 -c $(CFLAGS) $^
-	ar rcs liblz4.a lz4.o lz4hc.o
-
-liblz4.so: lz4.c lz4hc.c
-	$(CC) -shared -fPIC -Wl,--soname=liblz4.so.1 $(CFLAGS) $^ -o $@
+lz4programs:
+	@cd $(PRGDIR); $(MAKE) -e
 
 clean:
-	@rm -f core *.o *.a *.so $(DISTRIBNAME)
-	@cd $(PRGDIR); make clean
+	@cd $(PRGDIR); $(MAKE) clean > $(VOID)
+	@cd $(LZ4DIR); $(MAKE) clean > $(VOID)
+	@cd examples;  $(MAKE) clean > $(VOID)
+	@cd versionsTest; $(MAKE) clean > $(VOID)
 	@echo Cleaning completed
 
 
-#ifeq ($(shell uname),Linux)
-ifneq (,$(filter $(shell uname),Linux Darwin))
+#------------------------------------------------------------------------
+#make install is validated only for Linux, OSX, kFreeBSD and Hurd targets
+ifneq (,$(filter $(shell uname),Linux Darwin GNU/kFreeBSD GNU))
 
-install: liblz4
-	@install -d -m 755 $(DESTDIR)$(LIBDIR)/ $(DESTDIR)$(INCLUDEDIR)/
-	@install -m 755 liblz4.a $(DESTDIR)$(LIBDIR)/liblz4.a
-	@install -m 755 liblz4.so $(DESTDIR)$(LIBDIR)/liblz4.so
-	@install -m 755 lz4.h $(DESTDIR)$(INCLUDEDIR)/lz4.h
-	@install -m 755 lz4hc.h $(DESTDIR)$(INCLUDEDIR)/lz4hc.h
-	@echo lz4 static and shared library installed
-	@cd $(PRGDIR); make install
+install:
+	@cd $(LZ4DIR); $(MAKE) -e install
+	@cd $(PRGDIR); $(MAKE) -e install
 
 uninstall:
-	[ -x $(DESTDIR)$(LIBDIR)/liblz4.a ] && rm -f $(DESTDIR)$(LIBDIR)/liblz4.a
-	[ -x $(DESTDIR)$(LIBDIR)/liblz4.so ] && rm -f $(DESTDIR)$(LIBDIR)/liblz4.so
-	[ -f $(DESTDIR)$(INCLUDEDIR)/lz4.h ] && rm -f $(DESTDIR)$(INCLUDEDIR)/lz4.h
-	[ -f $(DESTDIR)$(INCLUDEDIR)/lz4hc.h ] && rm -f $(DESTDIR)$(INCLUDEDIR)/lz4hc.h
-	@echo lz4 libraries successfully uninstalled
-	@cd $(PRGDIR); make uninstall
+	@cd $(LZ4DIR); $(MAKE) uninstall
+	@cd $(PRGDIR); $(MAKE) uninstall
 
-dist: clean
-	@install -dD -m 700 lz4-$(RELEASE)/programs/
-	@install -dD -m 700 lz4-$(RELEASE)/cmake_unofficial/
-	@for f in $(TEXT); do \
-		tr -d '\r' < $$f > .tmp; \
-		install -m 600 .tmp lz4-$(RELEASE)/$$f; \
-	done
-	@rm .tmp
-	@for f in $(NONTEXT); do \
-		install -m 600 $$f lz4-$(RELEASE)/$$f; \
-	done
-	@tar -czf $(DISTRIBNAME) lz4-$(RELEASE)/
-	@rm -rf lz4-$(RELEASE)
-	@echo Distribution $(DISTRIBNAME) built
+travis-install:
+	sudo $(MAKE) install
+
+test:
+	@cd $(PRGDIR); $(MAKE) -e test
+
+test-travis: $(TRAVIS_TARGET)
+
+cmake:
+	@cd cmake_unofficial; cmake CMakeLists.txt; $(MAKE)
+
+gpptest: clean
+	$(MAKE) all CC=g++ CFLAGS="-O3 -Wall -Wextra -Wundef -Wshadow -Wcast-align -Werror"
+
+clangtest: clean
+	$(MAKE) all CC=clang CPPFLAGS="-Werror -Wconversion -Wno-sign-conversion"
+
+sanitize: clean
+	$(MAKE) test CC=clang CPPFLAGS="-g -fsanitize=undefined" FUZZER_TIME="-T1mn" NB_LOOPS=-i1
+
+staticAnalyze: clean
+	CPPFLAGS=-g scan-build --status-bugs -v $(MAKE) all
+
+armtest: clean
+	cd lib; $(MAKE) -e all CC=arm-linux-gnueabi-gcc CPPFLAGS="-Werror"
+	cd programs; $(MAKE) -e bins CC=arm-linux-gnueabi-gcc CPPFLAGS="-Werror"
+
+versionsTest: clean
+	@cd versionsTest; $(MAKE)
+
+examples:
+	cd lib; $(MAKE) -e
+	cd programs; $(MAKE) -e lz4
+	cd examples; $(MAKE) -e test
+
+prg-travis:
+	@cd $(PRGDIR); $(MAKE) -e test-travis
 
 endif
